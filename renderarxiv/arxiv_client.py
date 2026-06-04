@@ -12,6 +12,30 @@ from renderarxiv.models import Paper
 # Semantic Scholar API (for fetching citation counts)
 SEMANTIC_SCHOLAR_API = "https://api.semanticscholar.org/graph/v1/paper"
 
+
+class ArxivSearchError(RuntimeError):
+    """Raised when arXiv cannot be reached or returns a non-success status."""
+
+
+def _format_arxiv_error(error: Exception) -> str:
+    if isinstance(error, arxiv.HTTPError):
+        if error.status == 429:
+            return (
+                "arXiv API returned HTTP 429 Rate exceeded. "
+                "Your IP or proxy is being rate-limited by export.arxiv.org; "
+                "stop retrying for a while, then try again with at least a 3 second gap between requests."
+            )
+        if error.status == 503:
+            return (
+                "arXiv API returned HTTP 503 Service Unavailable. "
+                "This is usually temporary service overload, maintenance, or flow control; "
+                "wait a bit and retry."
+            )
+        return f"arXiv API returned HTTP {error.status}: {error}"
+
+    return f"Could not reach arXiv API: {error}"
+
+
 def search_arxiv(
     query: str,
     max_results: int = 50,
@@ -45,7 +69,6 @@ def search_arxiv(
 
     order = arxiv.SortOrder.Descending if sort_order == "descending" else arxiv.SortOrder.Ascending
 
-    print(f"🔎 Searching arXiv for: '{query}'")
     if category:
         print(f"   Filtering by category: {category}")
     
@@ -88,9 +111,13 @@ def search_arxiv(
         print(f"✓ Successfully retrieved {len(papers)} papers")
         return papers
 
-    except Exception as e:
-        print(f"❌ Search failed: {e}")
-        return []
+    except (
+        arxiv.HTTPError,
+        arxiv.UnexpectedEmptyPageError,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.Timeout,
+    ) as e:
+        raise ArxivSearchError(_format_arxiv_error(e)) from e
 
 def fetch_citations_batch(papers: List[Paper], batch_size: int = 100) -> List[Paper]:
     """

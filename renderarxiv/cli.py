@@ -15,6 +15,7 @@ from datetime import datetime
 from pygments.formatters import HtmlFormatter
 
 from renderarxiv.arxiv_client import (
+    ArxivSearchError,
     search_arxiv,
     rank_papers,
     fetch_citations_batch,
@@ -446,13 +447,17 @@ Examples:
     print(f"🔎 Searching arXiv for: {args.query}", file=sys.stderr)
     
     # Search arXiv
-    papers = search_arxiv(
-        query=args.query,
-        max_results=args.max_results * 2,  # Fetch extra for better filtering
-        sort_by=args.sort_by,
-        category=args.category,
-        days_limit=args.days,
-    )
+    try:
+        papers = search_arxiv(
+            query=args.query,
+            max_results=args.max_results * 2,  # Fetch extra for better filtering
+            sort_by=args.sort_by,
+            category=args.category,
+            days_limit=args.days,
+        )
+    except ArxivSearchError as e:
+        print(f"❌ Search failed: {e}", file=sys.stderr)
+        return 1
     
     if not papers:
         print("❌ No papers found. Try a different query.", file=sys.stderr)
