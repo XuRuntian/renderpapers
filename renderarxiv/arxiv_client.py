@@ -1,20 +1,31 @@
 import arxiv
+import hashlib
+import json
+import os
+import pathlib
+import re
 import requests
 import time
 import math
 from typing import List, Optional
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
+from urllib.parse import urlparse
 
 # Import Paper model from models
 from renderarxiv.models import Paper
 
 # Semantic Scholar API (for fetching citation counts)
 SEMANTIC_SCHOLAR_API = "https://api.semanticscholar.org/graph/v1/paper"
+CACHE_VERSION = 1
 
 
 class ArxivSearchError(RuntimeError):
     """Raised when arXiv cannot be reached or returns a non-success status."""
+
+    def __init__(self, message: str, status: Optional[int] = None):
+        super().__init__(message)
+        self.status = status
 
 
 def _format_arxiv_error(error: Exception) -> str:
@@ -36,6 +47,181 @@ def _format_arxiv_error(error: Exception) -> str:
     return f"Could not reach arXiv API: {error}"
 
 
+def _arxiv_error_status(error: Exception) -> Optional[int]:
+    return error.status if isinstance(error, arxiv.HTTPError) else None
+
+
+def _cache_dir() -> pathlib.Path:
+    base = os.environ.get("XDG_CACHE_HOME")
+    if base:
+        return pathlib.Path(base) / "renderarxiv"
+    return pathlib.Path.home() / ".cache" / "renderarxiv"
+
+
+def _cache_path(kind: str, payload: dict) -> pathlib.Path:
+    cache_key = {
+        "version": CACHE_VERSION,
+        "kind": kind,
+        "payload": payload,
+    }
+    raw = json.dumps(cache_key, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return _cache_dir() / f"{digest}.json"
+
+
+def _read_papers_cache(
+    path: pathlib.Path,
+    cache_ttl_hours: Optional[float],
+) -> Optional[List[Paper]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if cache_ttl_hours is not None:
+            created_at = datetime.fromisoformat(data["created_at"])
+            max_age = timedelta(hours=cache_ttl_hours)
+            if datetime.now() - created_at > max_age:
+                return None
+        return [Paper.model_validate(item) for item in data["papers"]]
+    except (OSError, KeyError, ValueError, TypeError):
+        return None
+
+
+def _write_papers_cache(path: pathlib.Path, papers: List[Paper]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "created_at": datetime.now().isoformat(),
+            "papers": [paper.model_dump(mode="json") for paper in papers],
+        }
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        return
+
+
+def _result_to_paper(result: arxiv.Result) -> Paper:
+    return Paper(
+        arxiv_id=result.get_short_id(),
+        title=result.title.replace('\n', ' ').strip(),
+        authors=[author.name for author in result.authors],
+        abstract=result.summary.replace('\n', ' ').strip(),
+        pdf_url=result.pdf_url,
+        arxiv_url=result.entry_id,
+        published=result.published.isoformat(),
+        updated=result.updated.isoformat(),
+        categories=result.categories,
+        primary_category=result.primary_category,
+        comment=result.comment,
+        journal_ref=result.journal_ref,
+        doi=result.doi,
+    )
+
+
+def _execute_search(search: arxiv.Search, max_results: int) -> List[Paper]:
+    client = arxiv.Client(
+        page_size=max_results,
+        delay_seconds=3,  # Recommended delay between queries
+        num_retries=3     # Automatically retry on connection failures
+    )
+    return [_result_to_paper(result) for result in client.results(search)]
+
+
+def _run_with_cache_and_retry(
+    search: arxiv.Search,
+    max_results: int,
+    cache_kind: str,
+    cache_payload: dict,
+    use_cache: bool,
+    cache_ttl_hours: float,
+    retry_on_rate_limit: bool,
+    rate_limit_retries: int,
+    retry_wait_seconds: float,
+) -> List[Paper]:
+    cache_file = _cache_path(cache_kind, cache_payload)
+    rate_limit_retries = max(0, rate_limit_retries)
+    retry_wait_seconds = max(0, retry_wait_seconds)
+
+    if use_cache:
+        cached = _read_papers_cache(cache_file, cache_ttl_hours)
+        if cached is not None:
+            print(f"✓ Loaded {len(cached)} papers from cache")
+            return cached
+
+    attempt = 0
+    while True:
+        try:
+            papers = _execute_search(search, max_results=max_results)
+            if use_cache:
+                _write_papers_cache(cache_file, papers)
+            return papers
+        except (
+            arxiv.HTTPError,
+            arxiv.UnexpectedEmptyPageError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as e:
+            status = _arxiv_error_status(e)
+            if status == 429 and retry_on_rate_limit and attempt < rate_limit_retries:
+                wait_seconds = retry_wait_seconds * (2 ** attempt)
+                print(f"⏳ arXiv rate limit hit; retrying in {wait_seconds:g}s...")
+                time.sleep(wait_seconds)
+                attempt += 1
+                continue
+
+            if use_cache:
+                stale = _read_papers_cache(cache_file, cache_ttl_hours=None)
+                if stale is not None:
+                    print(f"⚠️ arXiv failed ({_format_arxiv_error(e)}). Using stale cache.")
+                    return stale
+
+            raise ArxivSearchError(_format_arxiv_error(e), status=status) from e
+
+
+def extract_arxiv_id(value: str) -> Optional[str]:
+    """Return an arXiv ID from a bare ID or arxiv.org abs/pdf URL."""
+    text = value.strip()
+    if not text:
+        return None
+
+    parsed = urlparse(text)
+    if parsed.netloc.endswith("arxiv.org"):
+        parts = parsed.path.strip("/").split("/", 1)
+        if len(parts) == 2 and parts[0] in {"abs", "pdf"}:
+            arxiv_id = parts[1]
+            if arxiv_id.endswith(".pdf"):
+                arxiv_id = arxiv_id[:-4]
+            return arxiv_id or None
+
+    old_style = r"[a-z-]+(?:\.[A-Z]{2})?/\d{7}(?:v\d+)?"
+    new_style = r"\d{4}\.\d{4,5}(?:v\d+)?"
+    if re.fullmatch(f"(?:{old_style})|(?:{new_style})", text):
+        return text
+
+    return None
+
+
+def fetch_arxiv_ids(
+    arxiv_ids: List[str],
+    use_cache: bool = True,
+    cache_ttl_hours: float = 24,
+    retry_on_rate_limit: bool = False,
+    rate_limit_retries: int = 1,
+    retry_wait_seconds: float = 30,
+) -> List[Paper]:
+    search = arxiv.Search(id_list=arxiv_ids, max_results=len(arxiv_ids))
+    papers = _run_with_cache_and_retry(
+        search=search,
+        max_results=len(arxiv_ids),
+        cache_kind="ids",
+        cache_payload={"id_list": arxiv_ids},
+        use_cache=use_cache,
+        cache_ttl_hours=cache_ttl_hours,
+        retry_on_rate_limit=retry_on_rate_limit,
+        rate_limit_retries=rate_limit_retries,
+        retry_wait_seconds=retry_wait_seconds,
+    )
+    print(f"✓ Successfully retrieved {len(papers)} papers")
+    return papers
+
+
 def search_arxiv(
     query: str,
     max_results: int = 50,
@@ -43,6 +229,11 @@ def search_arxiv(
     sort_order: str = "descending",
     category: Optional[str] = None,
     days_limit: Optional[int] = None,
+    use_cache: bool = True,
+    cache_ttl_hours: float = 24,
+    retry_on_rate_limit: bool = False,
+    rate_limit_retries: int = 1,
+    retry_wait_seconds: float = 30,
 ) -> List[Paper]:
     """
     Search arXiv using the official 'arxiv' library.
@@ -72,13 +263,6 @@ def search_arxiv(
     if category:
         print(f"   Filtering by category: {category}")
     
-    # 3. Initialize client (configured with retry logic for SSL/connection issues)
-    client = arxiv.Client(
-        page_size=max_results,
-        delay_seconds=3,  # Recommended delay between queries
-        num_retries=3     # Automatically retry on connection failures
-    )
-
     search = arxiv.Search(
         query=search_query,
         max_results=max_results,
@@ -86,38 +270,24 @@ def search_arxiv(
         sort_order=order
     )
 
-    try:
-        papers = []
-        # Execute search and iterate through results
-        for result in client.results(search):
-            # Convert arxiv.Result object to custom Paper object
-            paper = Paper(
-                arxiv_id=result.get_short_id(),
-                title=result.title.replace('\n', ' ').strip(),
-                authors=[author.name for author in result.authors],
-                abstract=result.summary.replace('\n', ' ').strip(),
-                pdf_url=result.pdf_url,
-                arxiv_url=result.entry_id,
-                published=result.published.isoformat(),
-                updated=result.updated.isoformat(),
-                categories=result.categories,
-                primary_category=result.primary_category,
-                comment=result.comment,
-                journal_ref=result.journal_ref,
-                doi=result.doi,
-            )
-            papers.append(paper)
-
-        print(f"✓ Successfully retrieved {len(papers)} papers")
-        return papers
-
-    except (
-        arxiv.HTTPError,
-        arxiv.UnexpectedEmptyPageError,
-        requests.exceptions.ConnectionError,
-        requests.exceptions.Timeout,
-    ) as e:
-        raise ArxivSearchError(_format_arxiv_error(e)) from e
+    papers = _run_with_cache_and_retry(
+        search=search,
+        max_results=max_results,
+        cache_kind="search",
+        cache_payload={
+            "query": search_query,
+            "max_results": max_results,
+            "sort_by": sort_by,
+            "sort_order": sort_order,
+        },
+        use_cache=use_cache,
+        cache_ttl_hours=cache_ttl_hours,
+        retry_on_rate_limit=retry_on_rate_limit,
+        rate_limit_retries=rate_limit_retries,
+        retry_wait_seconds=retry_wait_seconds,
+    )
+    print(f"✓ Successfully retrieved {len(papers)} papers")
+    return papers
 
 def fetch_citations_batch(papers: List[Paper], batch_size: int = 100) -> List[Paper]:
     """

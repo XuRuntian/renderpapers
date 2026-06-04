@@ -62,6 +62,20 @@ Common categories: `cs.LG` (ML), `cs.AI` (AI), `cs.CL` (NLP), `cs.CV` (Vision), 
 renderarxiv "diffusion models" -o papers.html --no-open
 ```
 
+**Render a known arXiv paper directly:**
+```bash
+renderarxiv 1706.03762
+renderarxiv https://arxiv.org/abs/1706.03762
+```
+
+**Cache and rate-limit handling:**
+```bash
+renderarxiv "world model"                         # Uses a 24-hour local cache by default
+renderarxiv "world model" --no-cache              # Force a fresh arXiv API request
+renderarxiv "world model" --retry-on-rate-limit   # Retry once after HTTP 429
+renderarxiv "world model" --cache-ttl-hours 6     # Keep cache entries fresh for 6 hours
+```
+
 ---
 
 ## 💡 Examples
@@ -75,6 +89,9 @@ renderarxiv "attention is all you need" --mode relevant
 
 # Explore robotics
 renderarxiv "robot manipulation" --category cs.RO --max-results 20
+
+# Render by arXiv URL when search is rate-limited
+renderarxiv https://arxiv.org/abs/1706.03762 --no-open
 
 # Deep semantic search
 renderarxiv "few-shot learning" --mode semantic

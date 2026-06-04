@@ -16,6 +16,8 @@ from pygments.formatters import HtmlFormatter
 
 from renderarxiv.arxiv_client import (
     ArxivSearchError,
+    extract_arxiv_id,
+    fetch_arxiv_ids,
     search_arxiv,
     rank_papers,
     fetch_citations_batch,
@@ -439,37 +441,90 @@ Examples:
         type=int, 
         help="Only get the papers in the last few days (for example, 30 means within one month)."
     )
+    ap.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Always query arXiv instead of using cached results"
+    )
+    ap.add_argument(
+        "--cache-ttl-hours",
+        type=float,
+        default=24,
+        help="How long cached arXiv results stay fresh (default: 24)"
+    )
+    ap.add_argument(
+        "--retry-on-rate-limit",
+        action="store_true",
+        help="Retry after HTTP 429 rate-limit responses"
+    )
+    ap.add_argument(
+        "--rate-limit-retries",
+        type=int,
+        default=1,
+        help="Number of HTTP 429 retries when --retry-on-rate-limit is set (default: 1)"
+    )
+    ap.add_argument(
+        "--retry-wait",
+        type=float,
+        default=30,
+        help="Initial seconds to wait before retrying after HTTP 429 (default: 30)"
+    )
     args = ap.parse_args()
 
     if args.out is None:
         args.out = str(derive_temp_output_path(args.query))
 
-    print(f"🔎 Searching arXiv for: {args.query}", file=sys.stderr)
+    use_cache = not args.no_cache
+    arxiv_id = extract_arxiv_id(args.query)
     
-    # Search arXiv
     try:
-        papers = search_arxiv(
-            query=args.query,
-            max_results=args.max_results * 2,  # Fetch extra for better filtering
-            sort_by=args.sort_by,
-            category=args.category,
-            days_limit=args.days,
-        )
+        if arxiv_id:
+            print(f"🔎 Fetching arXiv paper: {arxiv_id}", file=sys.stderr)
+            papers = fetch_arxiv_ids(
+                [arxiv_id],
+                use_cache=use_cache,
+                cache_ttl_hours=args.cache_ttl_hours,
+                retry_on_rate_limit=args.retry_on_rate_limit,
+                rate_limit_retries=args.rate_limit_retries,
+                retry_wait_seconds=args.retry_wait,
+            )
+        else:
+            print(f"🔎 Searching arXiv for: {args.query}", file=sys.stderr)
+            papers = search_arxiv(
+                query=args.query,
+                max_results=args.max_results * 2,  # Fetch extra for better filtering
+                sort_by=args.sort_by,
+                category=args.category,
+                days_limit=args.days,
+                use_cache=use_cache,
+                cache_ttl_hours=args.cache_ttl_hours,
+                retry_on_rate_limit=args.retry_on_rate_limit,
+                rate_limit_retries=args.rate_limit_retries,
+                retry_wait_seconds=args.retry_wait,
+            )
     except ArxivSearchError as e:
         print(f"❌ Search failed: {e}", file=sys.stderr)
         return 1
     
     if not papers:
-        print("❌ No papers found. Try a different query.", file=sys.stderr)
+        if arxiv_id:
+            print(f"❌ No paper found for arXiv ID: {arxiv_id}", file=sys.stderr)
+        else:
+            print("❌ No papers found. Try a different query.", file=sys.stderr)
         return 1
 
     # Rank and filter
-    if args.mode == "semantic":
+    if arxiv_id:
+        ranked = papers[:args.max_results]
+    elif args.mode == "semantic":
         ranked = semantic_rank_papers(args.query, papers, max_results=args.max_results)
     else:
         ranked = rank_papers(args.query, papers, mode=args.mode, max_results=args.max_results)
     
-    print(f"✓ Filtered to {len(ranked)} papers (mode={args.mode})", file=sys.stderr)
+    if arxiv_id:
+        print(f"✓ Prepared {len(ranked)} paper from arXiv ID", file=sys.stderr)
+    else:
+        print(f"✓ Filtered to {len(ranked)} papers (mode={args.mode})", file=sys.stderr)
 
     # Generate HTML
     html_out = build_html(args.query, ranked)
