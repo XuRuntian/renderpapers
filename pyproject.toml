@@ -3,7 +3,7 @@ requires = ["setuptools >= 61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "renderarxiv"
+name = "renderpapers"
 version = "0.1.0"
 description = "Search papers and render results into human + LLM-friendly formats"
 readme = "README.md"
@@ -45,12 +45,11 @@ url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 default = true
 
 [project.scripts]
-renderpapers = "renderarxiv.cli:main"
-renderarxiv = "renderarxiv.cli:main"
+renderpapers = "renderpapers.cli:main"
 
 [tool.setuptools]
-packages = ["renderarxiv"]
+packages = ["renderpapers"]
 
 [project.urls]
-Homepage = "https://github.com/peterdunson/renderarxiv"
-Repository = "https://github.com/peterdunson/renderarxiv"
+Homepage = "https://github.com/XuRuntian/renderpapers"
+Repository = "https://github.com/XuRuntian/renderpapers"

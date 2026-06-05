@@ -11,10 +11,10 @@ Semantic Scholar is the default source, with arXiv kept as a compatibility sourc
 ## 📥 Install
 
 ```bash
-pip install git+https://github.com/XuRuntian/renderarxiv.git
+pip install git+https://github.com/XuRuntian/renderpapers.git
 ```
 
-That's it! This installs both `renderpapers` and the legacy `renderarxiv` command.
+That's it! This installs the `renderpapers` command.
 
 ---
 
@@ -24,7 +24,7 @@ That's it! This installs both `renderpapers` and the legacy `renderarxiv` comman
 renderpapers "transformer attention mechanism"
 ```
 
-By default this searches Semantic Scholar. If you have an API key, set it first:
+By default this searches Semantic Scholar. You can use it without an API key, but an API key is recommended for higher rate limits and more reliable use. Apply for one at [semanticscholar.org](https://www.semanticscholar.org/), then set it first:
 
 ```bash
 export SEMANTIC_SCHOLAR_API_KEY="your-key"
@@ -163,10 +163,9 @@ Full list: https://arxiv.org/category_taxonomy
 ## 🛠️ Development
 
 ```bash
-git clone https://github.com/peterdunson/renderarxiv.git
-cd renderarxiv
+git clone https://github.com/XuRuntian/renderpapers.git
+cd renderpapers
 pip install -e .
-# Both commands are installed; renderpapers is the preferred name.
 renderpapers "diffusion policy"
 ```
 
@@ -178,8 +177,8 @@ MIT © 2025
 
 ---
 
-## 🙏 Inspired by
+## 🙏 Acknowledgements
 
-- [rendergit](https://github.com/karpathy/rendergit) by Andrej Karpathy
-- [renderscholar](https://github.com/peterdunson/renderscholar)
-- [renderstack](https://github.com/peterdunson/renderstack)
+- Built on the [Semantic Scholar](https://www.semanticscholar.org/) Academic Graph API for paper discovery and metadata.
+- Inspired by [rendergit](https://github.com/karpathy/rendergit) by Andrej Karpathy.
+- Inspired by [renderscholar](https://github.com/peterdunson/renderscholar) and [renderstack](https://github.com/peterdunson/renderstack).

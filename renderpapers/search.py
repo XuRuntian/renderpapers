@@ -1,5 +1,5 @@
-from renderarxiv.sources import ArxivSource, SemanticScholarSource
-from renderarxiv.sources.base import PaperSearchError, PaperSource
+from renderpapers.sources import ArxivSource, SemanticScholarSource
+from renderpapers.sources.base import PaperSearchError, PaperSource
 
 
 SOURCE_ALIASES = {

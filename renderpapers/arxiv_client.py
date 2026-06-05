@@ -13,7 +13,7 @@ from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
 # Import Paper model from models
-from renderarxiv.models import Paper
+from renderpapers.models import Paper
 
 # Semantic Scholar API (for fetching citation counts)
 SEMANTIC_SCHOLAR_API = "https://api.semanticscholar.org/graph/v1/paper"
@@ -54,8 +54,8 @@ def _arxiv_error_status(error: Exception) -> Optional[int]:
 def _cache_dir() -> pathlib.Path:
     base = os.environ.get("XDG_CACHE_HOME")
     if base:
-        return pathlib.Path(base) / "renderarxiv"
-    return pathlib.Path.home() / ".cache" / "renderarxiv"
+        return pathlib.Path(base) / "renderpapers"
+    return pathlib.Path.home() / ".cache" / "renderpapers"
 
 
 def _cache_path(kind: str, payload: dict) -> pathlib.Path:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-renderarxiv: Search papers and render results in Human + LLM views.
+renderpapers: Search papers and render results in Human + LLM views.
 """
 
 import argparse
@@ -14,15 +14,15 @@ from datetime import datetime
 
 from pygments.formatters import HtmlFormatter
 
-from renderarxiv.arxiv_client import (
+from renderpapers.arxiv_client import (
     ArxivSearchError,
     extract_arxiv_id,
     rank_papers,
     semantic_rank_papers,
 )
-from renderarxiv.search import get_source
-from renderarxiv.sources.base import PaperSearchError
-from renderarxiv.models import (
+from renderpapers.search import get_source
+from renderpapers.sources.base import PaperSearchError
+from renderpapers.models import (
     Paper,
     format_results_for_llm,
     format_authors,
@@ -99,7 +99,7 @@ def build_html(query: str, papers: List[Paper]) -> str:
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>renderarxiv - {html.escape(query)}</title>
+<title>renderpapers - {html.escape(query)}</title>
 <style>
   * {{
     box-sizing: border-box;
@@ -394,7 +394,7 @@ function showLLMView() {{
 def derive_temp_output_path(query: str) -> pathlib.Path:
     """Temporary output path derived from query string."""
     safe_query = "".join(c if c.isalnum() else "_" for c in query)
-    filename = f"renderarxiv_{safe_query[:30]}.html"
+    filename = f"renderpapers_{safe_query[:30]}.html"
     return pathlib.Path(tempfile.gettempdir()) / filename
 
 

@@ -1,7 +1,7 @@
 from typing import Optional, List
 
-from renderarxiv.arxiv_client import fetch_arxiv_ids, search_arxiv
-from renderarxiv.models import Paper
+from renderpapers.arxiv_client import fetch_arxiv_ids, search_arxiv
+from renderpapers.models import Paper
 
 
 class ArxivSource:

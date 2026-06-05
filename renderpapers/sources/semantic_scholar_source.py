@@ -13,8 +13,8 @@ try:
 except ImportError:  # pragma: no cover - python-dotenv is a declared dependency
     load_dotenv = None
 
-from renderarxiv.models import Paper, get_category_name
-from renderarxiv.sources.base import PaperSearchError
+from renderpapers.models import Paper, get_category_name
+from renderpapers.sources.base import PaperSearchError
 
 
 SEMANTIC_SCHOLAR_SEARCH_API = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -44,8 +44,8 @@ FIELDS = ",".join([
 def _cache_dir() -> pathlib.Path:
     base = os.environ.get("XDG_CACHE_HOME")
     if base:
-        return pathlib.Path(base) / "renderarxiv"
-    return pathlib.Path.home() / ".cache" / "renderarxiv"
+        return pathlib.Path(base) / "renderpapers"
+    return pathlib.Path.home() / ".cache" / "renderpapers"
 
 
 def _cache_path(kind: str, payload: dict) -> pathlib.Path:

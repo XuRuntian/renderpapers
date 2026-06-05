@@ -1,6 +1,6 @@
 from typing import Protocol, Optional, List
 
-from renderarxiv.models import Paper
+from renderpapers.models import Paper
 
 
 class PaperSearchError(RuntimeError):
