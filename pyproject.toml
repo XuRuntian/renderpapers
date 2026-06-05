@@ -47,8 +47,8 @@ default = true
 [project.scripts]
 renderpapers = "renderpapers.cli:main"
 
-[tool.setuptools]
-packages = ["renderpapers"]
+[tool.setuptools.packages.find]
+include = ["renderpapers*"]
 
 [project.urls]
 Homepage = "https://github.com/XuRuntian/renderpapers"
