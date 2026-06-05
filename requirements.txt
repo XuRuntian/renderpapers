@@ -1,7 +1,7 @@
 # Core API requests
 requests>=2.31.0
 
-# arXiv API feed parsing
+# arXiv compatibility source
 feedparser>=6.0.10
 
 # HTML parsing (for abstracts)
@@ -15,3 +15,6 @@ pydantic>=2.9.2
 
 # Syntax highlighting for code blocks
 pygments>=2.19.0
+
+# arXiv client
+arxiv>=2.4.1

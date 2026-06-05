@@ -1,24 +1,77 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional, List, Any
 import re
 
 
 class Paper(BaseModel):
-    """Represents an arXiv paper."""
-    arxiv_id: str
+    """Represents a paper from arXiv, Semantic Scholar, or another source."""
+    source: str = "arxiv"
+    source_id: str = ""
     title: str
     authors: List[str]
-    abstract: str
-    pdf_url: str
-    arxiv_url: str
-    published: str  # ISO format date string
-    updated: str  # ISO format date string
-    categories: List[str]  # e.g., ['cs.LG', 'cs.AI']
-    primary_category: str  # e.g., 'cs.LG'
+    abstract: str = ""
+    url: str = ""
+    pdf_url: Optional[str] = None
+    published: Optional[str] = None  # ISO format date string when available
+    updated: Optional[str] = None  # ISO format date string when available
+    year: Optional[int] = None
+    categories: List[str] = Field(default_factory=list)  # e.g., ['cs.LG', 'Computer Science']
+    primary_category: Optional[str] = None  # e.g., 'cs.LG'
+    venue: Optional[str] = None
     comment: Optional[str] = None  # e.g., "10 pages, 3 figures"
     journal_ref: Optional[str] = None
     doi: Optional[str] = None
     citations: Optional[int] = None  # From Semantic Scholar if available
+    external_ids: dict[str, str] = Field(default_factory=dict)
+    tldr: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_arxiv_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        migrated = dict(data)
+        external_ids = dict(migrated.get("external_ids") or {})
+
+        arxiv_id = migrated.pop("arxiv_id", None)
+        if arxiv_id:
+            external_ids.setdefault("ArXiv", arxiv_id)
+            migrated.setdefault("source", "arxiv")
+            migrated.setdefault("source_id", arxiv_id)
+
+        arxiv_url = migrated.pop("arxiv_url", None)
+        if arxiv_url:
+            migrated.setdefault("url", arxiv_url)
+
+        if migrated.get("doi"):
+            external_ids.setdefault("DOI", migrated["doi"])
+
+        migrated["external_ids"] = external_ids
+        if not migrated.get("source_id"):
+            migrated["source_id"] = external_ids.get("ArXiv") or external_ids.get("DOI") or ""
+        return migrated
+
+    @property
+    def arxiv_id(self) -> Optional[str]:
+        return self.external_ids.get("ArXiv")
+
+    @property
+    def arxiv_url(self) -> Optional[str]:
+        arxiv_id = self.arxiv_id
+        if self.source == "arxiv" and self.url:
+            return self.url
+        if arxiv_id:
+            return f"https://arxiv.org/abs/{arxiv_id}"
+        return None
+
+    @property
+    def display_date(self) -> str:
+        if self.published:
+            return self.published[:10]
+        if self.year:
+            return str(self.year)
+        return "Unknown"
 
 
 def clean_text(text: str) -> str:
@@ -47,10 +100,18 @@ def format_paper_for_llm(paper: Paper) -> str:
     # Header
     output.append(f"📄 {clean_text(paper.title)}")
     output.append(f"👥 Authors: {format_authors(paper.authors)}")
-    output.append(f"📅 Published: {paper.published[:10]}")  # Just the date part
-    output.append(f"🏷️ Categories: {', '.join(paper.categories)}")
-    output.append(f"🔗 arXiv: {paper.arxiv_url}")
-    output.append(f"📥 PDF: {paper.pdf_url}")
+    output.append(f"📅 Published: {paper.display_date}")
+    output.append(f"🗄️ Source: {paper.source}")
+    if paper.categories:
+        output.append(f"🏷️ Categories: {', '.join(paper.categories)}")
+    if paper.venue:
+        output.append(f"🏛️ Venue: {clean_text(paper.venue)}")
+    if paper.url:
+        output.append(f"🔗 Page: {paper.url}")
+    if paper.arxiv_url and paper.arxiv_url != paper.url:
+        output.append(f"🔗 arXiv: {paper.arxiv_url}")
+    if paper.pdf_url:
+        output.append(f"📥 PDF: {paper.pdf_url}")
     
     if paper.citations is not None:
         output.append(f"📊 Citations: {paper.citations}")
@@ -63,6 +124,9 @@ def format_paper_for_llm(paper: Paper) -> str:
     
     if paper.doi:
         output.append(f"🔍 DOI: {paper.doi}")
+
+    if paper.tldr:
+        output.append(f"💡 TLDR: {clean_text(paper.tldr)}")
     
     # Abstract
     output.append(f"\n📝 Abstract:")

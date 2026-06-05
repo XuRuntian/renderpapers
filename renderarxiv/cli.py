@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-renderarxiv: Search arXiv and render results in Human + LLM views
+renderarxiv: Search papers and render results in Human + LLM views.
 """
 
 import argparse
@@ -17,12 +17,11 @@ from pygments.formatters import HtmlFormatter
 from renderarxiv.arxiv_client import (
     ArxivSearchError,
     extract_arxiv_id,
-    fetch_arxiv_ids,
-    search_arxiv,
     rank_papers,
-    fetch_citations_batch,
     semantic_rank_papers,
 )
+from renderarxiv.search import get_source
+from renderarxiv.sources.base import PaperSearchError
 from renderarxiv.models import (
     Paper,
     format_results_for_llm,
@@ -43,9 +42,11 @@ def build_html(query: str, papers: List[Paper]) -> str:
         title = html.escape(p.title)
         authors_str = html.escape(format_authors(p.authors, max_authors=5))
         abstract = html.escape(clean_text(p.abstract))
+        page_url = p.url or p.arxiv_url
         arxiv_url = p.arxiv_url
         pdf_url = p.pdf_url
-        published = p.published[:10]  # Just date
+        published = p.display_date
+        source = html.escape(p.source)
         
         # Categories with human-readable names
         category_tags = []
@@ -58,10 +59,14 @@ def build_html(query: str, papers: List[Paper]) -> str:
         extras = []
         if p.comment:
             extras.append(f"💬 {html.escape(clean_text(p.comment))}")
+        if p.venue:
+            extras.append(f"🏛️ {html.escape(clean_text(p.venue))}")
         if p.journal_ref:
             extras.append(f"📖 {html.escape(clean_text(p.journal_ref))}")
         if p.doi:
             extras.append(f'🔍 DOI: <a href="https://doi.org/{p.doi}" target="_blank">{html.escape(p.doi)}</a>')
+        if p.tldr:
+            extras.append(f"💡 {html.escape(clean_text(p.tldr))}")
         extras_html = "<br>".join(extras) if extras else ""
         
         paper_html = f"""
@@ -70,13 +75,15 @@ def build_html(query: str, papers: List[Paper]) -> str:
           <div class="meta">
             <span class="authors">👥 {authors_str}</span>
             <span class="date">📅 {published}</span>
+            <span class="source">🗄️ {source}</span>
           </div>
           <div class="categories">{categories_html}</div>
           <div class="abstract">{abstract}</div>
           {f'<div class="extras">{extras_html}</div>' if extras_html else ''}
           <div class="links">
-            <a href="{arxiv_url}" target="_blank" class="btn">📄 arXiv Page</a>
-            <a href="{pdf_url}" target="_blank" class="btn btn-primary">📥 Download PDF</a>
+            {f'<a href="{html.escape(page_url)}" target="_blank" class="btn">📄 Paper Page</a>' if page_url else ''}
+            {f'<a href="{html.escape(arxiv_url)}" target="_blank" class="btn">📄 arXiv Page</a>' if arxiv_url and arxiv_url != page_url else ''}
+            {f'<a href="{html.escape(pdf_url)}" target="_blank" class="btn btn-primary">📥 PDF</a>' if pdf_url else ''}
           </div>
         </section>
         """
@@ -92,7 +99,7 @@ def build_html(query: str, papers: List[Paper]) -> str:
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>renderarxiv – {html.escape(query)}</title>
+<title>renderarxiv - {html.escape(query)}</title>
 <style>
   * {{
     box-sizing: border-box;
@@ -331,7 +338,7 @@ def build_html(query: str, papers: List[Paper]) -> str:
 <body>
 <div class="container">
 
-  <h1>🔬 arXiv: {html.escape(query)}</h1>
+  <h1>🔬 Papers: {html.escape(query)}</h1>
   <div class="summary">
     <strong>{len(papers)}</strong> papers found
   </div>
@@ -393,17 +400,23 @@ def derive_temp_output_path(query: str) -> pathlib.Path:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Search arXiv and render results into HTML",
+        description="Search papers and render results into HTML",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  renderarxiv "transformer attention mechanism"
-  renderarxiv "quantum computing" --mode recent --max-results 15
-  renderarxiv "deep learning" --category cs.LG --mode relevant
-  renderarxiv "neural networks" --mode semantic
+  renderpapers "transformer attention mechanism"
+  renderpapers "quantum computing" --mode recent --max-results 15
+  renderpapers "deep learning" --source arxiv --category cs.LG --mode relevant
+  renderpapers "neural networks" --source semantic-scholar --mode semantic
         """
     )
     ap.add_argument("query", help="Search query")
+    ap.add_argument(
+        "--source",
+        choices=["semantic-scholar", "semantic", "s2", "arxiv"],
+        default="semantic-scholar",
+        help="Paper source to query (default: semantic-scholar)"
+    )
     ap.add_argument(
         "--max-results", 
         type=int, 
@@ -418,13 +431,13 @@ Examples:
     )
     ap.add_argument(
         "--category",
-        help="Filter by arXiv category (e.g., cs.LG, cs.AI, math.CO)"
+        help="Filter by arXiv category; Semantic Scholar approximates this by adding the category name to the query"
     )
     ap.add_argument(
         "--sort-by",
         choices=["relevance", "lastUpdatedDate", "submittedDate"],
         default="relevance",
-        help="arXiv API sort criterion (default: relevance)"
+        help="Source sort criterion; currently only arXiv uses this directly (default: relevance)"
     )
 
     ap.add_argument(
@@ -444,13 +457,13 @@ Examples:
     ap.add_argument(
         "--no-cache",
         action="store_true",
-        help="Always query arXiv instead of using cached results"
+        help="Always query the selected source instead of using cached results"
     )
     ap.add_argument(
         "--cache-ttl-hours",
         type=float,
         default=24,
-        help="How long cached arXiv results stay fresh (default: 24)"
+        help="How long cached source results stay fresh (default: 24)"
     )
     ap.add_argument(
         "--retry-on-rate-limit",
@@ -476,21 +489,24 @@ Examples:
 
     use_cache = not args.no_cache
     arxiv_id = extract_arxiv_id(args.query)
+    source = get_source(args.source)
     
     try:
         if arxiv_id:
-            print(f"🔎 Fetching arXiv paper: {arxiv_id}", file=sys.stderr)
-            papers = fetch_arxiv_ids(
-                [arxiv_id],
+            identifier = arxiv_id if source.name == "arxiv" else f"ArXiv:{arxiv_id}"
+            print(f"🔎 Fetching paper from {source.name}: {identifier}", file=sys.stderr)
+            paper = source.fetch_one(
+                identifier,
                 use_cache=use_cache,
                 cache_ttl_hours=args.cache_ttl_hours,
                 retry_on_rate_limit=args.retry_on_rate_limit,
                 rate_limit_retries=args.rate_limit_retries,
                 retry_wait_seconds=args.retry_wait,
             )
+            papers = [paper] if paper else []
         else:
-            print(f"🔎 Searching arXiv for: {args.query}", file=sys.stderr)
-            papers = search_arxiv(
+            print(f"🔎 Searching {source.name} for: {args.query}", file=sys.stderr)
+            papers = source.search(
                 query=args.query,
                 max_results=args.max_results * 2,  # Fetch extra for better filtering
                 sort_by=args.sort_by,
@@ -502,7 +518,7 @@ Examples:
                 rate_limit_retries=args.rate_limit_retries,
                 retry_wait_seconds=args.retry_wait,
             )
-    except ArxivSearchError as e:
+    except (ArxivSearchError, PaperSearchError) as e:
         print(f"❌ Search failed: {e}", file=sys.stderr)
         return 1
     
@@ -510,7 +526,7 @@ Examples:
         if arxiv_id:
             print(f"❌ No paper found for arXiv ID: {arxiv_id}", file=sys.stderr)
         else:
-            print("❌ No papers found. Try a different query.", file=sys.stderr)
+            print(f"❌ No papers found in {source.name}. Try a different query or --source arxiv.", file=sys.stderr)
         return 1
 
     # Rank and filter

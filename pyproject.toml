@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "renderarxiv"
 version = "0.1.0"
-description = "Search arXiv and render results into human + LLM-friendly formats"
+description = "Search papers and render results into human + LLM-friendly formats"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
     {name = "Your Name"},
 ]
 requires-python = ">=3.10"
-keywords = ["arxiv", "papers", "research", "preprints", "LLM", "machine learning", "AI"]
+keywords = ["semantic-scholar", "arxiv", "papers", "research", "preprints", "LLM", "machine learning", "AI"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -45,6 +45,7 @@ url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 default = true
 
 [project.scripts]
+renderpapers = "renderarxiv.cli:main"
 renderarxiv = "renderarxiv.cli:main"
 
 [tool.setuptools]

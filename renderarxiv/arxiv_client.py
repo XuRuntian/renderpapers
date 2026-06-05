@@ -98,20 +98,28 @@ def _write_papers_cache(path: pathlib.Path, papers: List[Paper]) -> None:
 
 
 def _result_to_paper(result: arxiv.Result) -> Paper:
+    arxiv_id = result.get_short_id()
+    external_ids = {"ArXiv": arxiv_id}
+    if result.doi:
+        external_ids["DOI"] = result.doi
+
     return Paper(
-        arxiv_id=result.get_short_id(),
+        source="arxiv",
+        source_id=arxiv_id,
         title=result.title.replace('\n', ' ').strip(),
         authors=[author.name for author in result.authors],
         abstract=result.summary.replace('\n', ' ').strip(),
+        url=result.entry_id,
         pdf_url=result.pdf_url,
-        arxiv_url=result.entry_id,
         published=result.published.isoformat(),
         updated=result.updated.isoformat(),
+        year=result.published.year if result.published else None,
         categories=result.categories,
         primary_category=result.primary_category,
         comment=result.comment,
         journal_ref=result.journal_ref,
         doi=result.doi,
+        external_ids=external_ids,
     )
 
 
@@ -302,6 +310,9 @@ def fetch_citations_batch(papers: List[Paper], batch_size: int = 100) -> List[Pa
         batch = papers[i:i + batch_size]
         for paper in batch:
             try:
+                if not paper.arxiv_id:
+                    paper.citations = 0
+                    continue
                 url = f"{SEMANTIC_SCHOLAR_API}/arXiv:{paper.arxiv_id}"
                 response = requests.get(
                     url,
@@ -335,7 +346,7 @@ def rank_papers(
         return papers
     
     if mode == "recent":
-        sorted_papers = sorted(papers, key=lambda p: p.published, reverse=True)
+        sorted_papers = sorted(papers, key=lambda p: p.published or str(p.year or ""), reverse=True)
         return sorted_papers[:max_results]
     
     elif mode == "cited":
@@ -360,7 +371,7 @@ def rank_papers(
         scored = []
         current_year = datetime.now().year
         for paper in papers:
-            year = int(paper.published[:4])
+            year = paper.year or int((paper.published or "2000")[:4])
             recency = max(0, (year - 2000) / (current_year - 2000))
             citations = paper.citations if paper.citations is not None else 0
             cite_score = math.log1p(citations) / 10
@@ -378,7 +389,7 @@ def rank_papers(
             relevance = 0.7 * title_sim + 0.3 * abstract_sim
             citations = paper.citations if paper.citations is not None else 0
             cite_score = math.log1p(citations) / 10
-            year = int(paper.published[:4])
+            year = paper.year or int((paper.published or "2000")[:4])
             recency = max(0, (year - 2000) / (current_year - 2000))
             score = 0.4 * relevance + 0.35 * cite_score + 0.25 * recency
             scored.append((score, paper))
@@ -403,7 +414,7 @@ def semantic_rank_papers(query: str, papers: List[Paper], max_results: int = 20)
         
         for paper in papers:
             # Encode Title + Abstract
-            text = f"{paper.title} {paper.abstract}"
+            text = f"{paper.title} {paper.abstract} {paper.tldr or ''}"
             doc_emb = model.encode(text, convert_to_tensor=True)
             similarity = float(util.cos_sim(query_emb, doc_emb).item())
             
@@ -411,7 +422,7 @@ def semantic_rank_papers(query: str, papers: List[Paper], max_results: int = 20)
             citations = paper.citations if paper.citations is not None else 0
             cite_score = math.log1p(citations) / 10
             
-            year = int(paper.published[:4])
+            year = paper.year or int((paper.published or "2000")[:4])
             recency = max(0, (year - 2000) / (current_year - 2000))
             
             # Weighted combined score
@@ -445,6 +456,6 @@ if __name__ == "__main__":
         print(f"Authors: {', '.join(p.authors[:3])}")
         print(f"Published: {p.published[:10]}")
         print(f"Citations: {p.citations}")
-        print(f"URL: {p.arxiv_url}")
+        print(f"URL: {p.url or p.arxiv_url}")
     else:
         print("❌ No matching papers found.")

@@ -1,10 +1,10 @@
-# 🔬 renderarxiv
+# 🔬 renderpapers
 
-![renderarxiv demo](readme.png)
+![renderpapers demo](readme.png)
 
-Search arXiv from your terminal and get beautiful HTML results you can read or copy-paste into ChatGPT/Claude.
+Search real papers from your terminal and get beautiful HTML results you can read or copy-paste into ChatGPT/Claude.
 
-No more hallucinated papers — everything is real, straight from arXiv.
+Semantic Scholar is the default source, with arXiv kept as a compatibility source for arXiv-specific searches and direct arXiv IDs/URLs.
 
 ---
 
@@ -14,17 +14,23 @@ No more hallucinated papers — everything is real, straight from arXiv.
 pip install git+https://github.com/XuRuntian/renderarxiv.git
 ```
 
-That's it!
+That's it! This installs both `renderpapers` and the legacy `renderarxiv` command.
 
 ---
 
 ## 🚀 Use
 
 ```bash
-renderarxiv "transformer attention mechanism"
+renderpapers "transformer attention mechanism"
 ```
 
-Opens a beautiful HTML page in your browser with:
+By default this searches Semantic Scholar. If you have an API key, set it first:
+
+```bash
+export SEMANTIC_SCHOLAR_API_KEY="your-key"
+```
+
+You can also put the same value in a local `.env` file. Opens a beautiful HTML page in your browser with:
 - 👤 **Human view** — clean paper cards with abstracts, authors, PDF links
 - 🤖 **LLM view** — formatted text ready to copy into AI assistants
 
@@ -32,48 +38,55 @@ Opens a beautiful HTML page in your browser with:
 
 ## ⚙️ Options
 
+**Choose a source:**
+```bash
+renderpapers "diffusion policy"                         # Semantic Scholar by default
+renderpapers "diffusion policy" --source semantic-scholar
+renderpapers "diffusion policy" --source arxiv
+```
+
 **Get more/fewer results:**
 ```bash
-renderarxiv "quantum computing" --max-results 15
+renderpapers "quantum computing" --max-results 15
 ```
 **Filter by time**
 ```
-renderarxiv "machine learning" --days 30  # Only papers from the last 30 days
+renderpapers "machine learning" --days 30  # Only papers from the last 30 days
 ```
 **Ranking modes:**
 ```bash
-renderarxiv "deep learning" --mode recent      # Newest papers
-renderarxiv "neural networks" --mode relevant  # Best text match
-renderarxiv "language models" --mode semantic  # Smart semantic matching
+renderpapers "deep learning" --mode recent      # Newest papers
+renderpapers "neural networks" --mode relevant  # Best text match
+renderpapers "language models" --mode semantic  # Smart semantic matching
 ```
 
 Default is `balanced` (mix of relevance + recency).
 
 **Filter by category:**
 ```bash
-renderarxiv "object detection" --category cs.CV  # Computer Vision only
-renderarxiv "optimization" --category math.OC    # Math only
+renderpapers "object detection" --source arxiv --category cs.CV  # Exact arXiv category
+renderpapers "optimization" --source arxiv --category math.OC    # Exact arXiv category
 ```
 
 Common categories: `cs.LG` (ML), `cs.AI` (AI), `cs.CL` (NLP), `cs.CV` (Vision), `cs.RO` (Robotics)
 
 **Save to file:**
 ```bash
-renderarxiv "diffusion models" -o papers.html --no-open
+renderpapers "diffusion models" -o papers.html --no-open
 ```
 
 **Render a known arXiv paper directly:**
 ```bash
-renderarxiv 1706.03762
-renderarxiv https://arxiv.org/abs/1706.03762
+renderpapers 1706.03762
+renderpapers https://arxiv.org/abs/1706.03762
 ```
 
 **Cache and rate-limit handling:**
 ```bash
-renderarxiv "world model"                         # Uses a 24-hour local cache by default
-renderarxiv "world model" --no-cache              # Force a fresh arXiv API request
-renderarxiv "world model" --retry-on-rate-limit   # Retry once after HTTP 429
-renderarxiv "world model" --cache-ttl-hours 6     # Keep cache entries fresh for 6 hours
+renderpapers "world model"                         # Uses a 24-hour local cache by default
+renderpapers "world model" --no-cache              # Force a fresh source API request
+renderpapers "world model" --retry-on-rate-limit   # Retry once after HTTP 429
+renderpapers "world model" --cache-ttl-hours 6     # Keep cache entries fresh for 6 hours
 ```
 
 ---
@@ -82,29 +95,29 @@ renderarxiv "world model" --cache-ttl-hours 6     # Keep cache entries fresh for
 
 ```bash
 # Latest ML research
-renderarxiv "large language models" --category cs.LG --mode recent
+renderpapers "large language models" --source arxiv --category cs.LG --mode recent
 
 # Find a specific paper
-renderarxiv "attention is all you need" --mode relevant
+renderpapers "attention is all you need" --mode relevant
 
 # Explore robotics
-renderarxiv "robot manipulation" --category cs.RO --max-results 20
+renderpapers "robot manipulation" --max-results 20
 
 # Render by arXiv URL when search is rate-limited
-renderarxiv https://arxiv.org/abs/1706.03762 --no-open
+renderpapers https://arxiv.org/abs/1706.03762 --no-open
 
 # Deep semantic search
-renderarxiv "few-shot learning" --mode semantic
+renderpapers "few-shot learning" --mode semantic
 
 # Get the latest Computer Vision papers from the past 7 days
-renderarxiv "object detection" --category cs.CV --days 7 --mode recent
+renderpapers "object detection" --source arxiv --category cs.CV --days 7 --mode recent
 ```
 
 ---
 
 ## 🎯 Pro Tip
 
-1. Search for papers: `renderarxiv "your topic" --max-results 10`
+1. Search for papers: `renderpapers "your topic" --max-results 10`
 2. Click the **🤖 LLM** button in your browser
 3. Copy the text (Ctrl+A, Ctrl+C)
 4. Paste into ChatGPT/Claude: *"Summarize these papers and identify key trends"*
@@ -141,8 +154,8 @@ Full list: https://arxiv.org/category_taxonomy
 - ✅ Direct PDF download links
 - ✅ Beautiful, readable output
 - ✅ LLM-ready formatted text
-- ✅ Fast (uses official arXiv API)
-- ✅ Filter by research area
+- ✅ Fast Semantic Scholar search with arXiv compatibility
+- ✅ Filter by research area when using arXiv categories
 - ✅ Multiple ranking modes
 
 ---
@@ -153,6 +166,8 @@ Full list: https://arxiv.org/category_taxonomy
 git clone https://github.com/peterdunson/renderarxiv.git
 cd renderarxiv
 pip install -e .
+# Both commands are installed; renderpapers is the preferred name.
+renderpapers "diffusion policy"
 ```
 
 ---
