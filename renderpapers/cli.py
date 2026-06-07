@@ -408,6 +408,7 @@ Examples:
   renderpapers "quantum computing" --mode recent --max-results 15
   renderpapers "deep learning" --source arxiv --category cs.LG --mode relevant
   renderpapers "neural networks" --source semantic-scholar --mode semantic
+  renderpapers "robot manipulation" --venue ICRA,IROS --days 365
         """
     )
     ap.add_argument("query", help="Search query")
@@ -432,6 +433,15 @@ Examples:
     ap.add_argument(
         "--category",
         help="Filter by arXiv category; Semantic Scholar approximates this by adding the category name to the query"
+    )
+    ap.add_argument(
+        "--venue",
+        action="append",
+        default=[],
+        help=(
+            "Filter Semantic Scholar by conference or journal. "
+            "Accepts comma-separated values and may be repeated."
+        ),
     )
     ap.add_argument(
         "--sort-by",
@@ -484,6 +494,13 @@ Examples:
     )
     args = ap.parse_args()
 
+    venues = [
+        venue.strip()
+        for value in args.venue
+        for venue in value.split(",")
+        if venue.strip()
+    ]
+
     if args.out is None:
         args.out = str(derive_temp_output_path(args.query))
 
@@ -492,6 +509,10 @@ Examples:
     source = get_source(args.source)
     
     try:
+        if venues and arxiv_id:
+            raise PaperSearchError(
+                "--venue cannot be used when fetching a paper directly by arXiv ID or URL."
+            )
         if arxiv_id:
             identifier = arxiv_id if source.name == "arxiv" else f"ArXiv:{arxiv_id}"
             print(f"🔎 Fetching paper from {source.name}: {identifier}", file=sys.stderr)
@@ -511,6 +532,7 @@ Examples:
                 max_results=args.max_results * 2,  # Fetch extra for better filtering
                 sort_by=args.sort_by,
                 category=args.category,
+                venues=venues or None,
                 days_limit=args.days,
                 use_cache=use_cache,
                 cache_ttl_hours=args.cache_ttl_hours,

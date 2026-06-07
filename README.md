@@ -50,9 +50,21 @@ renderpapers "diffusion policy" --source arxiv
 renderpapers "quantum computing" --max-results 15
 ```
 **Filter by time**
-```
+```bash
 renderpapers "machine learning" --days 30  # Only papers from the last 30 days
 ```
+
+**Filter by conferences or journals (Semantic Scholar):**
+```bash
+renderpapers "robot manipulation" --venue ICRA
+renderpapers "object detection" --venue CVPR,ICCV,ECCV
+renderpapers "language models" --venue ACL --venue EMNLP --days 365
+```
+
+`--venue` may be repeated or given a comma-separated list. Conference and
+journal names are matched using Semantic Scholar's venue metadata. It can be
+combined with `--days`; venue filtering is not available for the arXiv source.
+
 **Ranking modes:**
 ```bash
 renderpapers "deep learning" --mode recent      # Newest papers

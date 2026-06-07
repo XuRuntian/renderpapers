@@ -17,6 +17,7 @@ class PaperSource(Protocol):
         sort_by: str = "relevance",
         sort_order: str = "descending",
         category: Optional[str] = None,
+        venues: Optional[List[str]] = None,
         days_limit: Optional[int] = None,
         use_cache: bool = True,
         cache_ttl_hours: float = 24,

@@ -177,6 +177,7 @@ class SemanticScholarSource:
         sort_by: str = "relevance",
         sort_order: str = "descending",
         category: Optional[str] = None,
+        venues: Optional[List[str]] = None,
         days_limit: Optional[int] = None,
         use_cache: bool = True,
         cache_ttl_hours: float = 24,
@@ -191,6 +192,7 @@ class SemanticScholarSource:
             "sort_by": sort_by,
             "sort_order": sort_order,
             "category": category,
+            "venues": venues,
             "days_limit": days_limit,
         }
         cache_file = _cache_path("semantic-scholar-search", payload)
@@ -201,6 +203,11 @@ class SemanticScholarSource:
                 return cached
 
         params = {"query": request_query, "limit": min(max_results, 100), "fields": FIELDS}
+        if venues:
+            params["venue"] = ",".join(venues)
+        if days_limit:
+            cutoff = datetime.now().date() - timedelta(days=days_limit)
+            params["publicationDateOrYear"] = f"{cutoff.isoformat()}:"
         attempts = max(1, rate_limit_retries + 1 if retry_on_rate_limit else 1)
         last_error: Optional[Exception] = None
         for attempt in range(attempts):

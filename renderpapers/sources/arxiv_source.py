@@ -2,6 +2,7 @@ from typing import Optional, List
 
 from renderpapers.arxiv_client import fetch_arxiv_ids, search_arxiv
 from renderpapers.models import Paper
+from renderpapers.sources.base import PaperSearchError
 
 
 class ArxivSource:
@@ -14,6 +15,7 @@ class ArxivSource:
         sort_by: str = "relevance",
         sort_order: str = "descending",
         category: Optional[str] = None,
+        venues: Optional[List[str]] = None,
         days_limit: Optional[int] = None,
         use_cache: bool = True,
         cache_ttl_hours: float = 24,
@@ -21,6 +23,10 @@ class ArxivSource:
         rate_limit_retries: int = 1,
         retry_wait_seconds: float = 30,
     ) -> List[Paper]:
+        if venues:
+            raise PaperSearchError(
+                "Venue filtering is only supported by the Semantic Scholar source."
+            )
         return search_arxiv(
             query=query,
             max_results=max_results,
